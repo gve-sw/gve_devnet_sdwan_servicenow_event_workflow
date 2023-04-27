@@ -23,6 +23,8 @@ An intermediate web application which acts as an mapper and forwarder between SD
 2. Update the service now host details in ```.env``` file.
 ```
 SERVICE_NOW_HOST=<instance>.service-now.com
+SERVICE_NOW_USERNAME=
+SERVICE_NOW_PASSWORD=
 ```
 3. Set up a Python virtual environment. Make sure Python 3 is installed in your environment, and if not, you may download Python [here](https://www.python.org/downloads/). Once Python 3 is installed in your environment, you can activate the virtual environment with the instructions found [here](https://docs.python.org/3/tutorial/venv.html).
 4. Install the requirements with `pip3 install -r requirements.txt`

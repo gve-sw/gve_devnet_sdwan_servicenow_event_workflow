@@ -20,6 +20,7 @@ import logging.handlers
 from dotenv import load_dotenv
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request
+from requests.auth import HTTPBasicAuth
 
 # Load env variables
 load_dotenv()
@@ -83,7 +84,8 @@ def map_message(payload):
             elif v=="values":
                 list_of_devices=[]
                 for device in data[v]:
-                    list_of_devices.append(f'{device["host-name"]}-{device["system-ip"]}')
+                    if device.get("system-ip"):
+                        list_of_devices.append(f'{device["system-ip"]}')
                 message[k]=",".join(list_of_devices)
             else:
                 message[k]=data[v]
@@ -101,9 +103,10 @@ def forward_message_as_json(payload):
         'Accept': "application/json",
         'Content-Type': "application/json",
     }
+    auth = HTTPBasicAuth(os.getenv("SERVICE_NOW_USERNAME"), os.getenv("SERVICE_NOW_PASSWORD"))
     app.logger.debug(f'url: {url}, payload: {payload}')
 
-    response= requests.post(url=url,headers=headers, json=payload)
+    response= requests.post(url=url,headers=headers, json=payload,auth=auth)
     app.logger.debug(f'SNOW Response: {response.json()}')
     return response
 
