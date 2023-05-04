@@ -6,9 +6,9 @@ An intermediate web application which acts as an mapper and forwarder between SD
 * Raveesh Malyavantham V
 
 ## Solution Components
-* Python
+*  Python
 *  Flask
-*  ServiceNow API (Event Collection Service)
+*  ServiceNow API (Event Collection)
 
 ## Related Sandbox Environment
 
@@ -23,8 +23,13 @@ An intermediate web application which acts as an mapper and forwarder between SD
 2. Update the service now host details in ```.env``` file.
 ```
 SERVICE_NOW_HOST=<instance>.service-now.com
-SERVICE_NOW_USERNAME=
-SERVICE_NOW_PASSWORD=
+
+SERVICE_NOW_CLIENT_ID=<client-id>
+SERVICE_NOW_CLIENT_SECRET=<client-secret>
+SERVICE_NOW_USERNAME=<username>
+SERVICE_NOW_PASSWORD=<password>
+
+# optionally update other configuration based on requirement
 ```
 3. Set up a Python virtual environment. Make sure Python 3 is installed in your environment, and if not, you may download Python [here](https://www.python.org/downloads/). Once Python 3 is installed in your environment, you can activate the virtual environment with the instructions found [here](https://docs.python.org/3/tutorial/venv.html).
 4. Install the requirements with `pip3 install -r requirements.txt`
@@ -48,13 +53,14 @@ The following blocks in ```app.py``` defines the mapping options of the notifica
         "additional_info" : "*"
     }
 ```
-Reference link [here]( https://docs.servicenow.com/en-US/bundle/tokyo-it-operations-management/page/product/event-management/task/send-events-via-web-service.html)
+Instructions for Event Mapping on Service Now at [here]( https://docs.servicenow.com/en-US/bundle/tokyo-it-operations-management/page/product/event-management/task/send-events-via-web-service.html)
 
 ## Usage
 To run the code, use the command:
 ```
 $ python3 app.py
 ```
+to run application in background, please follow steps [here](https://www.digitalocean.com/community/tutorials/nohup-command-in-linux)
 
 # Screenshots
 

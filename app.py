@@ -13,17 +13,35 @@ or implied.
 """
 
 import os
+import sys
 import requests
 import logging
 import logging.config
 import logging.handlers
+import json
 from dotenv import load_dotenv
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request
-from requests.auth import HTTPBasicAuth
 
 # Load env variables
 load_dotenv()
+
+from logging.config import dictConfig
+dictConfig({
+    'version': 1,
+    'formatters': {'default': {
+        'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    }},
+    'handlers': {'wsgi': {
+        'class': 'logging.StreamHandler',
+        'stream': 'ext://flask.logging.wsgi_errors_stream',
+        'formatter': 'default'
+    }},
+    'root': {
+        'level': 'INFO',
+        'handlers': ['wsgi']
+    }
+})
 
 # Flask initialization
 app = Flask(__name__)
@@ -59,7 +77,7 @@ def map_message(payload):
     # * represent entire object (passed entire record in additional info for further reference or processing)
     mapping_fields={
         "message_key":"uuid",
-        "source":"values",
+        "node":"devices",
         "em_event.metric_name":"rule_name_display",
         "type":"component",
         "severity":"severity_number",
@@ -71,6 +89,9 @@ def map_message(payload):
     records=[]
     for data in payload:
         message = {}
+        message["source"] = "vmanage"
+        message["resource"] = "alarms"
+
         for k,v in mapping_fields.items():
             if v=="*":
                 message[k]=data
@@ -81,11 +102,11 @@ def map_message(payload):
                     message[k] = "Closing"
             elif v=="receive_time":
                 message[k]=datetime.utcfromtimestamp(data[v]/1000).strftime('%Y-%m-%d %H:%M:%S')
-            elif v=="values":
+            elif v=="devices":
                 list_of_devices=[]
                 for device in data[v]:
-                    if device.get("system-ip"):
-                        list_of_devices.append(f'{device["system-ip"]}')
+                    if "system-ip" in device:
+                        list_of_devices.append(device["system-ip"])
                 message[k]=",".join(list_of_devices)
             else:
                 message[k]=data[v]
@@ -98,17 +119,49 @@ def map_message(payload):
 def forward_message_as_json(payload):
     # please refer event management documentation for more info
     # https://docs.servicenow.com/en-US/bundle/tokyo-it-operations-management/page/product/event-management/task/send-events-via-web-service.html
+
     url = f'https://{os.getenv("SERVICE_NOW_HOST")}{os.getenv("SERVICE_NOW_ENDPOINT")}'
+    token = getAuthToken()
     headers = {
         'Accept': "application/json",
         'Content-Type': "application/json",
+        'Authorization': f"Bearer {token}"
     }
-    auth = HTTPBasicAuth(os.getenv("SERVICE_NOW_USERNAME"), os.getenv("SERVICE_NOW_PASSWORD"))
     app.logger.debug(f'url: {url}, payload: {payload}')
 
-    response= requests.post(url=url,headers=headers, json=payload,auth=auth)
-    app.logger.debug(f'SNOW Response: {response.json()}')
+    response= requests.post(url=url,headers=headers, json=payload)
+    app.logger.info(f'Service Now API Call Status: {response.status_code}')
+    app.logger.debug(f'url: {url} - response: {response.json()}')
     return response
+
+def getAuthToken():
+    # please refer event management documentation for more info
+    # https://support.servicenow.com/kb?id=kb_article_view&sysparm_article=KB0778194
+
+    url = f'https://{os.getenv("SERVICE_NOW_HOST")}/oauth_token.do'
+    payload= {
+        "grant_type" : "password",
+        "client_id" : os.getenv('SERVICE_NOW_CLIENT_ID'),
+        "client_secret" : os.getenv('SERVICE_NOW_CLIENT_SECRET'),
+        "username" : os.getenv('SERVICE_NOW_USERNAME'),
+        "password" : os.getenv('SERVICE_NOW_PASSWORD'),
+    }
+    headers = {
+        'Accept': "application/json",
+        'Content-Type': "application/x-www-form-urlencoded",
+    }
+
+    response= requests.post(url=url,headers=headers, data=payload)
+    app.logger.info(f'OAuth Status: {response.status_code}')
+    app.logger.debug(f'url: {url} - response: {response.json()}')
+
+    if response.status_code <300 and response.status_code>=200:
+        auth_data=json.loads(response.text)
+    else:
+        response.raise_for_status
+
+    return auth_data["access_token"]
+
 
 def enable_custom_logging():
 
@@ -120,13 +173,30 @@ def enable_custom_logging():
     file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
     # Timed Rotating Log File Handler, rolls over to new log at midnight
-    rotating_log_handler = logging.handlers.TimedRotatingFileHandler(filename=os.path.join(log_path, 'app.log'),when='midnight', backupCount=30)
+    script_name=os.path.basename(sys.argv[0].rsplit(".",1)[0])
+    file_name= os.path.join(log_path, f'{script_name}.log')
+    rotating_log_handler = logging.handlers.TimedRotatingFileHandler(filename=file_name,when='midnight', backupCount=10)
     rotating_log_handler.setFormatter(file_formatter)
 
     # Registering to application logger
+    app.logger.info(f'logging to file: {file_name}')
     app.logger.addHandler(rotating_log_handler)
+
 
 if __name__ == "__main__":
     # File Logging
     enable_custom_logging()
-    app.run(host='0.0.0.0')
+    options={}
+    options["host"]="0.0.0.0"
+    options["port"]=int(os.getenv('FLASK_RUN_PORT')) if os.getenv('FLASK_RUN_PORT') else 5000
+
+    if os.getenv('HTTPS_ENABLED').lower() == 'true':
+        cert_file=os.getenv("HTTPS_CERT_FILE")
+        key_file=os.getenv("HTTPS_KEY_FILE")
+        if not os.path.exists(cert_file) or not os.path.exists(key_file):
+            app.logger.error( f'Unable to find: {cert_file} or {key_file}')
+            exit()
+
+        options["ssl_context"]=(cert_file,key_file)
+
+    app.run(**options)
